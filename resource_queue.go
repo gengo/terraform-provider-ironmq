@@ -46,6 +46,8 @@ func queueSchema() *schema.Resource {
 		Read:   readQueue,
 		Update: updateQueue,
 		Delete: deleteQueue,
+		Exists: queueExists,
+
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
@@ -126,6 +128,16 @@ func deleteQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
 	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
 	return q.Delete()
+}
+
+func queueExists(data *schema.ResourceData, meta interface{}) (bool, error) {
+	cfg := meta.(config.Settings)
+	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
+	_, err := q.Info()
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // queueInfoFromData constructs expected queueInfo based on a resource state given by Terraform.
