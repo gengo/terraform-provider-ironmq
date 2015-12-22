@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -115,6 +116,10 @@ func queueExists(data *schema.ResourceData, meta interface{}) (bool, error) {
 	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
 	_, err := q.Info()
 	if err != nil {
+		// TODO: avoid this hacky detection once mq client library supports QueueNotExist err.
+		if strings.Contains(err.Error(), "Queue not found") {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil
