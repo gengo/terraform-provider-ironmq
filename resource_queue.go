@@ -78,7 +78,11 @@ func queueSchema() *schema.Resource {
 
 func createQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	info, err := mq.ConfigCreateQueue(queueInfoFromData(data), &cfg)
+	info, err := queueInfoFromData(data)
+	if err != nil {
+		return err
+	}
+	info, err = mq.ConfigCreateQueue(info, &cfg)
 	if err != nil {
 		return err
 	}
@@ -88,16 +92,23 @@ func createQueue(data *schema.ResourceData, meta interface{}) error {
 
 func updateQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	info := queueInfoFromData(data)
+	info, err := queueInfoFromData(data)
+	if err != nil {
+		return err
+	}
 	q := mq.ConfigNew(info.Name, &cfg)
-	info, err := q.Update(info)
+	info, err = q.Update(info)
+	if err != nil {
+
+		return err
+	}
 	refreshState(data, cfg.ProjectId, info)
-	return err
+	return nil
 }
 
 func readQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	name := queueInfoFromData(data).Name
+	name := data.Get("name").(string)
 	q := mq.ConfigNew(name, &cfg)
 	info, err := q.Info()
 	if err != nil {
@@ -109,13 +120,15 @@ func readQueue(data *schema.ResourceData, meta interface{}) error {
 
 func deleteQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
+	name := data.Get("name").(string)
+	q := mq.ConfigNew(name, &cfg)
 	return q.Delete()
 }
 
 func queueExists(data *schema.ResourceData, meta interface{}) (bool, error) {
 	cfg := meta.(config.Settings)
-	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
+	name := data.Get("name").(string)
+	q := mq.ConfigNew(name, &cfg)
 	_, err := q.Info()
 	if err != nil {
 		// TODO: avoid this hacky detection once mq client library supports QueueNotExist err.
@@ -130,13 +143,23 @@ func queueExists(data *schema.ResourceData, meta interface{}) (bool, error) {
 // queueInfoFromData constructs expected queueInfo based on a resource state given by Terraform.
 //
 // It assumes that "data" is valid against queueSchema.
-func queueInfoFromData(data *schema.ResourceData) mq.QueueInfo {
+func queueInfoFromData(data *schema.ResourceData) (mq.QueueInfo, error) {
 	name := data.Get("name").(string)
 	typ := data.Get("type").(string)
 	var push *mq.PushInfo
 	if typ != "pull" {
 		push = new(mq.PushInfo)
-		m := data.Get("push").([]interface{})[0].(map[string]interface{})
+		ps := data.Get("push").([]interface{})
+		// TODO: Do this validation earlier once schema.Schema supports ValidateFunc for compound types.
+		switch len(ps) {
+		case 0:
+			return mq.QueueInfo{}, fmt.Errorf(`push queue must have argument "push"`)
+		case 1:
+			break
+		default:
+			return mq.QueueInfo{}, fmt.Errorf(`argument "push" cannot be a list`)
+		}
+		m := ps[0].(map[string]interface{})
 
 		push.RetriesDelay = m["retries_delay"].(int)
 		push.Retries = m["retries"].(int)
@@ -152,7 +175,7 @@ func queueInfoFromData(data *schema.ResourceData) mq.QueueInfo {
 		Name: name,
 		Type: &typ,
 		Push: push,
-	}
+	}, nil
 }
 
 // refreshState reflects the current configuration of the queue to "data" based
