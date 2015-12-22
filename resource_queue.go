@@ -1,26 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 )
-
-func pushConfigHash(v interface{}) int {
-	cfg := v.(map[string]interface{})
-	var buf bytes.Buffer
-	for _, item := range cfg["subscribers"].([]interface{}) {
-		s := item.(map[string]interface{})
-		buf.WriteString(s["url"].(string))
-		buf.WriteRune(0)
-	}
-	return hashcode.String(buf.String())
-}
 
 func queueSchema() *schema.Resource {
 	subscriber := &schema.Resource{
@@ -33,12 +20,28 @@ func queueSchema() *schema.Resource {
 			},
 		},
 	}
+	// This schema must be consistent to pushConfigHash.
 	pushConfig := &schema.Resource{
 		Schema: map[string]*schema.Schema{
+			"retries_delay": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Default:  60,
+			},
+			"retries": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Default:  3,
+			},
 			"subscribers": {
 				Type:     schema.TypeList,
 				Required: true,
 				Elem:     subscriber,
+			},
+			"error_queue": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "",
 			},
 		},
 	}
@@ -65,10 +68,9 @@ func queueSchema() *schema.Resource {
 				ValidateFunc: validateQueueType,
 			},
 			"push": {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Optional: true,
 				Elem:     pushConfig,
-				Set:      pushConfigHash,
 			},
 		},
 	}
@@ -134,13 +136,17 @@ func queueInfoFromData(data *schema.ResourceData) mq.QueueInfo {
 	var push *mq.PushInfo
 	if typ != "pull" {
 		push = new(mq.PushInfo)
-		m := data.Get("push").(*schema.Set).List()[0].(map[string]interface{})
+		m := data.Get("push").([]interface{})[0].(map[string]interface{})
+
+		push.RetriesDelay = m["retries_delay"].(int)
+		push.Retries = m["retries"].(int)
 		for _, item := range m["subscribers"].([]interface{}) {
 			s := item.(map[string]interface{})
 			push.Subscribers = append(push.Subscribers, mq.QueueSubscriber{
 				URL: s["url"].(string),
 			})
 		}
+		push.ErrorQueue = m["error_queue"].(string)
 	}
 	return mq.QueueInfo{
 		Name: name,
@@ -167,9 +173,12 @@ func refreshState(data *schema.ResourceData, project string, info mq.QueueInfo) 
 		})
 	}
 	push := map[string]interface{}{
-		"subscribers": subscribers,
+		"retries_delay": info.Push.RetriesDelay,
+		"retries":       info.Push.Retries,
+		"subscribers":   subscribers,
+		"error_queue":   info.Push.ErrorQueue,
 	}
-	data.Set("push", schema.NewSet(pushConfigHash, []interface{}{push}))
+	data.Set("push", []interface{}{push})
 }
 
 func validateQueueType(value interface{}, key string) ([]string, []error) {
