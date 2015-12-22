@@ -75,13 +75,11 @@ func queueSchema() *schema.Resource {
 
 func createQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	_, err := mq.ConfigCreateQueue(queueInfoFromData(data), &cfg)
+	info, err := mq.ConfigCreateQueue(queueInfoFromData(data), &cfg)
 	if err != nil {
 		return err
 	}
-	if err := readQueue(data, meta); err != nil {
-		return err
-	}
+	refreshState(data, cfg.ProjectId, info)
 	return nil
 }
 
@@ -89,7 +87,8 @@ func updateQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
 	info := queueInfoFromData(data)
 	q := mq.ConfigNew(info.Name, &cfg)
-	_, err := q.Update(info)
+	info, err := q.Update(info)
+	refreshState(data, cfg.ProjectId, info)
 	return err
 }
 
@@ -101,26 +100,7 @@ func readQueue(data *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	data.SetId(fmt.Sprintf("%s/%s", cfg.ProjectId, name))
-	if info.Type == nil || *info.Type == "pull" {
-		data.Set("type", "pull")
-		data.Set("push", nil)
-		return nil
-	}
-
-	data.Set("type", *info.Type)
-
-	var subscribers []interface{}
-	for _, s := range info.Push.Subscribers {
-		subscribers = append(subscribers, map[string]interface{}{
-			"url": s.URL,
-		})
-	}
-	push := map[string]interface{}{
-		"subscribers": subscribers,
-	}
-	data.Set("push", schema.NewSet(pushConfigHash, []interface{}{push}))
+	refreshState(data, cfg.ProjectId, info)
 	return nil
 }
 
@@ -162,6 +142,29 @@ func queueInfoFromData(data *schema.ResourceData) mq.QueueInfo {
 		Type: &typ,
 		Push: push,
 	}
+}
+
+// refreshState reflects the current configuration of the queue to "data" based
+// on "project" and "info".
+func refreshState(data *schema.ResourceData, project string, info mq.QueueInfo) {
+	data.SetId(fmt.Sprintf("%s/%s", project, info.Name))
+	if info.Type == nil || *info.Type == "pull" {
+		data.Set("type", "pull")
+		data.Set("push", nil)
+		return
+	}
+	data.Set("type", *info.Type)
+
+	var subscribers []interface{}
+	for _, s := range info.Push.Subscribers {
+		subscribers = append(subscribers, map[string]interface{}{
+			"url": s.URL,
+		})
+	}
+	push := map[string]interface{}{
+		"subscribers": subscribers,
+	}
+	data.Set("push", schema.NewSet(pushConfigHash, []interface{}{push}))
 }
 
 func validateQueueType(value interface{}, key string) ([]string, []error) {
