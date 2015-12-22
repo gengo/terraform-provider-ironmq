@@ -51,6 +51,9 @@ func readQueue(data *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func deleteQueue(data *schema.ResourceData, ironcfg interface{}) error {
-	return nil
+func deleteQueue(data *schema.ResourceData, meta interface{}) error {
+	cfg := meta.(config.Settings)
+	name := data.Get("name").(string)
+	q := mq.ConfigNew(name, &cfg)
+	return q.Delete()
 }
