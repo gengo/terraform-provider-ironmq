@@ -8,7 +8,7 @@ import (
 
 func newProvider() terraform.ResourceProvider {
 	return &schema.Provider{
-		Schema: map[string]*schema.Schema{},
+		Schema: configurationSchema,
 		ResourcesMap: map[string]*schema.Resource{
 			"ironmq_queue": queueSchema(),
 		},
