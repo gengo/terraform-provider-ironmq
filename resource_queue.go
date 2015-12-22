@@ -15,7 +15,6 @@ func queueSchema() *schema.Resource {
 			"url": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "URL of a queue subscriber endpoint",
 			},
 		},
