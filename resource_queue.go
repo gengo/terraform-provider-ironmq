@@ -27,10 +27,7 @@ func queueSchema() *schema.Resource {
 
 func createQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	name := data.Get("name").(string)
-	_, err := mq.ConfigCreateQueue(mq.QueueInfo{
-		Name: name,
-	}, &cfg)
+	_, err := mq.ConfigCreateQueue(queueInfoFromData(data), &cfg)
 	if err != nil {
 		return err
 	}
@@ -46,14 +43,23 @@ func updateQueue(data *schema.ResourceData, meta interface{}) error {
 
 func readQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	name := data.Get("name").(string)
+	name := queueInfoFromData(data).Name
 	data.SetId(fmt.Sprintf("%s/%s", cfg.ProjectId, name))
 	return nil
 }
 
 func deleteQueue(data *schema.ResourceData, meta interface{}) error {
 	cfg := meta.(config.Settings)
-	name := data.Get("name").(string)
-	q := mq.ConfigNew(name, &cfg)
+	q := mq.ConfigNew(queueInfoFromData(data).Name, &cfg)
 	return q.Delete()
+}
+
+// queueInfoFromData constructs expected queueInfo based on a resource state given by Terraform.
+//
+// It assumes that "data" is valid against queueSchema.
+func queueInfoFromData(data *schema.ResourceData) mq.QueueInfo {
+	name := data.Get("name").(string)
+	return mq.QueueInfo{
+		Name: name,
+	}
 }
