@@ -17,7 +17,7 @@ Then, copy `$GOPATH/bin/terraform-provider-ironmq` into the same directory as `t
  
 ## Example Usage
 At first, put a valid [client configuration of IronMQ](http://dev.iron.io/mq/3/libraries/) into a right place.
-Without the right configuration, terraform will fail, saying `unexpected EOF`.
+Then you can run `terraform` command as usual.
 
 example.tf:
 ```
